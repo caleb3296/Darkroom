@@ -520,109 +520,74 @@
 (function () {
   "use strict";
 
-  var IMG = "https://image.chutes.ai/generate";
   var el = function (id) { return document.getElementById(id); };
 
   /* ------------------------------------------------------------------
-     Model registry.
+     Model registry — verified against each chute's llms.txt.
 
-     Every chute defines its own request schema, so each entry carries
-     the parameter names and ranges that model actually accepts. Sending
-     a field a model doesn't know about gets the whole request rejected.
+     Chutes consolidated its image catalog: the old unified
+     image.chutes.ai/generate endpoint is gone, and every model now runs
+     on its own vonkaiser-* host with a flat JSON body. Four of the six
+     entries below share the ImageClassic chute, which switches
+     checkpoints via a required `model` field.
   ------------------------------------------------------------------ */
 
-  var SDXL = function (id, label, note) {
-    return {
-      id: id, label: label, note: note, url: IMG, model: id,
-      steps: { key: "num_inference_steps", def: 25, min: 1, max: 50 },
-      cfg: { key: "guidance_scale", def: 7.5, min: 1, max: 20, step: 0.5 },
-      size: { mode: "free", min: 128, max: 2048 },
-      negative: true
-    };
-  };
+  var CLASSIC = "https://vonkaiser-imageclassic.chutes.ai/generate";
 
   var MODELS = [
     {
       id: "z-image-turbo", label: "Z-Image Turbo",
       note: "Fastest here — 9 steps. Best default on a phone.",
-      url: "https://chutes-z-image-turbo.chutes.ai/generate",
+      url: "https://vonkaiser-z-image-turbo.chutes.ai/generate",
       steps: { key: "num_inference_steps", def: 9, min: 1, max: 100 },
       cfg: { key: "guidance_scale", def: 0, min: 0, max: 5, step: 0.5 },
       size: { mode: "free", min: 576, max: 2048 },
       negative: false, promptMax: 1200
     },
     {
-      id: "qwen-image", label: "Qwen Image",
-      note: "Strong all-rounder. Handles text in images well.",
-      url: IMG, model: "qwen-image",
-      steps: { key: "num_inference_steps", def: 50, min: 5, max: 100 },
+      id: "qwen-image-2512", label: "Qwen-Image 2512",
+      note: "Best quality. Strong human realism and in-image text. Slower.",
+      url: "https://vonkaiser-qwen-image-2512.chutes.ai/generate",
+      steps: { key: "num_inference_steps", def: 30, min: 5, max: 100 },
       cfg: { key: "true_cfg_scale", def: 4, min: 0, max: 10, step: 0.5 },
       size: { mode: "free", min: 128, max: 2048 },
       negative: true
     },
     {
-      id: "FLUX.1-dev", label: "FLUX.1 dev",
-      note: "Most photoreal. Caps at 30 steps, no negative prompt.",
-      url: IMG, model: "FLUX.1-dev",
-      steps: { key: "num_inference_steps", def: 10, min: 1, max: 30 },
-      cfg: { key: "guidance_scale", def: 7.5, min: 1, max: 20, step: 0.5 },
+      id: "classic-flux", label: "FLUX.1 schnell",
+      note: "Fast Flux draft, 4 steps. Ignores negative prompts.",
+      url: CLASSIC, model: "flux",
+      steps: { key: "num_inference_steps", def: 4, min: 1, max: 50 },
+      cfg: { key: "guidance_scale", def: 3.5, min: 0, max: 20, step: 0.5 },
       size: { mode: "free", min: 128, max: 2048 },
       negative: false
     },
     {
-      id: "chroma", label: "Chroma",
-      note: "Flux-derived, loose and painterly. No negative prompt.",
-      url: IMG, model: "chroma",
-      steps: { key: "steps", def: 30, min: 5, max: 50 },
-      cfg: { key: "cfg", def: 4.5, min: 1, max: 7.5, step: 0.5 },
-      size: { mode: "free", min: 200, max: 2048 },
-      negative: false
-    },
-    SDXL("JuggernautXL", "JuggernautXL", "Photoreal SDXL workhorse."),
-    SDXL("iLustMix", "iLustMix", "Illustration and semi-real blend."),
-    SDXL("HassakuXL", "HassakuXL", "Anime, high contrast."),
-    SDXL("Illustrij", "Illustrij", "Clean illustration style."),
-    SDXL("Animij", "Animij", "Anime, softer rendering."),
-    SDXL("nova-anime3d-xl", "Nova Anime3D XL", "Anime with 3D-ish shading."),
-    SDXL("nova-cartoon-xl", "Nova Cartoon XL", "Western cartoon styling."),
-    {
-      id: "neta-lumina", label: "Neta Lumina",
-      note: "Anime-tuned Lumina. Minimum 768px, narrow guidance band.",
-      url: IMG, model: "neta-lumina",
-      steps: { key: "steps", def: 30, min: 20, max: 50 },
-      cfg: { key: "cfg", def: 4.5, min: 4, max: 5.5, step: 0.1 },
-      size: { mode: "free", min: 768, max: 2048 },
+      id: "classic-juggernaut", label: "JuggernautXL",
+      note: "Photoreal SDXL. Wants strong guidance and a negative prompt.",
+      url: CLASSIC, model: "juggernaut",
+      steps: { key: "num_inference_steps", def: 25, min: 1, max: 50 },
+      cfg: { key: "guidance_scale", def: 7.5, min: 1, max: 20, step: 0.5 },
+      size: { mode: "free", min: 128, max: 2048 },
       negative: true
     },
     {
-      id: "orphic-lora", label: "Orphic LoRA",
-      note: "Stylized LoRA stack. Max 30 steps, no negative prompt.",
-      url: IMG, model: "orphic-lora",
-      steps: { key: "num_inference_steps", def: 10, min: 1, max: 30 },
+      id: "classic-dreamshaper", label: "DreamShaper",
+      note: "SDXL all-rounder, stylized leaning.",
+      url: CLASSIC, model: "dreamshaper",
+      steps: { key: "num_inference_steps", def: 25, min: 1, max: 50 },
       cfg: { key: "guidance_scale", def: 7.5, min: 1, max: 20, step: 0.5 },
       size: { mode: "free", min: 128, max: 2048 },
-      negative: false
+      negative: true
     },
     {
-      id: "hidream-i1-full", label: "HiDream I1 Full",
-      note: "Fixed resolutions only. Slow but detailed.",
-      url: "https://chutes-hidream.chutes.ai/generate",
-      steps: { key: "num_inference_steps", def: 50, min: 5, max: 75 },
-      cfg: { key: "guidance_scale", def: 5, min: 0, max: 10, step: 0.5 },
-      size: {
-        mode: "enum", key: "resolution",
-        options: ["1024x1024", "768x1360", "1360x768", "880x1168", "1168x880", "1248x832", "832x1248"]
-      },
-      negative: false
-    },
-    {
-      id: "hunyuan-image-3", label: "Hunyuan Image 3",
-      note: "Takes a size string — auto, 1280x768, or an aspect like 16:9.",
-      url: "https://chutes-hunyuan-image-3.chutes.ai/generate",
-      steps: { key: "steps", def: 50, min: 10, max: 100 },
-      cfg: null,
-      size: { mode: "string", key: "size", def: "auto" },
-      negative: false
+      id: "classic-ilustmix", label: "iLustMix",
+      note: "SDXL illustration and semi-real blend.",
+      url: CLASSIC, model: "ilustmix",
+      steps: { key: "num_inference_steps", def: 25, min: 1, max: 50 },
+      cfg: { key: "guidance_scale", def: 7.5, min: 1, max: 20, step: 0.5 },
+      size: { mode: "free", min: 128, max: 2048 },
+      negative: true
     }
   ];
 
@@ -893,7 +858,15 @@
 
   el("keyField").value = load("chutes_api_key", "");
   el("keyField").addEventListener("input", function () {
-    save("chutes_api_key", this.value.trim());
+    var cleaned = scrub(this.value);
+    if (cleaned !== this.value) {
+      var at = this.selectionStart;
+      this.value = cleaned;
+      try { this.setSelectionRange(at, at); } catch (e) {}
+    }
+    save("chutes_api_key", cleaned);
+    var problem = keyProblem(cleaned);
+    if (problem && cleaned) { warn(problem); } else { clearNotice(); }
     quota();
   });
 
@@ -984,13 +957,34 @@
     notice.classList.add("shown");
   }
 
+  /* HTTP headers are Latin-1 only. A key pasted from a masked display often
+     carries an ellipsis or a zero-width character, and fetch() then refuses
+     to build the request with an error that names none of this. */
+  function keyProblem(key) {
+    for (var i = 0; i < key.length; i++) {
+      var code = key.charCodeAt(i);
+      if (code < 0x20 || code > 0x7e) {
+        var hex = code.toString(16).toUpperCase();
+        while (hex.length < 4) { hex = "0" + hex; }
+        return "Your API key has an invalid character at position " + (i + 1) +
+               " (U+" + hex + "). It was probably copied from a shortened or " +
+               "styled version of the key. Re-copy the full key, or make a new one.";
+      }
+    }
+    return null;
+  }
+
+  function scrub(text) {
+    return text.replace(/[\s\u200B-\u200D\uFEFF]/g, "");
+  }
+
   function clearNotice() { el("notice").classList.remove("shown"); }
 
   /* ---------------- quota ---------------- */
 
   function quota() {
-    var key = load("chutes_api_key", "");
-    if (!key) { el("quota").textContent = ""; return; }
+    var key = scrub(load("chutes_api_key", ""));
+    if (!key || keyProblem(key)) { el("quota").textContent = ""; return; }
     fetch("https://api.chutes.ai/users/me/quota_usage/me", {
       headers: { "Authorization": "Bearer " + key }
     })
@@ -1053,9 +1047,17 @@
     var text = el("prompt").value.trim();
     if (!text) { return; }
 
-    var key = load("chutes_api_key", "");
+    var key = scrub(load("chutes_api_key", ""));
     if (!key) {
       warn("Add your Chutes API key in Settings first.");
+      paintSettings();
+      openSheet("settingsSheet");
+      return;
+    }
+
+    var problem = keyProblem(key);
+    if (problem) {
+      warn(problem);
       paintSettings();
       openSheet("settingsSheet");
       return;
