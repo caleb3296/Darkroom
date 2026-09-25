@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#16181c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Darkroom">
+<title>Darkroom</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%2316181c'/><circle cx='32' cy='32' r='13' fill='%23ffb020'/></svg>">
+<style>
+  :root {
+    --ground: #16181c;
+    --panel: #1d2026;
+    --sunk: #101216;
+    --edge: #2c3038;
+    --edge-bright: #3d434e;
+    --ink: #e4e6ea;
+    --muted: #878d99;
+    --faint: #5a616d;
+    --safelight: #ffb020;
+    --alarm: #ff6b5e;
+
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+    --top: env(safe-area-inset-top, 0px);
+    --bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    overscroll-behavior: none;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    padding-top: var(--top);
+  }
+
+  button, input, textarea, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--safelight); outline-offset: 2px; }
+
+  /* ---------- top bar ---------- */
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--edge);
+    background: var(--panel);
+    flex: none;
+  }
+
+  .pick {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 11px;
+    background: var(--sunk);
+    border: 1px solid var(--edge);
+    border-radius: 7px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .pick .name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 560;
+  }
+
+  .pick .caret { color: var(--faint); font-size: 11px; flex: none; }
+
+  .icon {
+    flex: none;
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    background: var(--sunk);
+    border: 1px solid var(--edge);
+    border-radius: 7px;
+    cursor: pointer;
+    color: var(--muted);
+  }
+
+  .icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .icon:active { background: var(--edge); }
+  .icon.on { color: var(--safelight); border-color: var(--safelight); }
+
+  /* ---------- stage ---------- */
+
+  .stage {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    padding: 12px;
+    background: var(--sunk);
+    overflow: hidden;
+  }
+
+  .stage img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 3px;
+    display: block;
+  }
+
+  .blank {
+    text-align: center;
+    color: var(--faint);
+    font-size: 13.5px;
+    max-width: 26ch;
+    padding: 0 12px;
+  }
+
+  .working {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(16,18,22,0.88);
+    color: var(--muted);
+    font-size: 13.5px;
+  }
+
+  .orb {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 2px solid var(--edge-bright);
+    border-top-color: var(--safelight);
+    animation: spin 0.9s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .orb { animation-duration: 3s; }
+  }
+
+  .elapsed { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+
+  /* result action strip */
+
+  .strip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    background: linear-gradient(to top, rgba(16,18,22,0.95), rgba(16,18,22,0));
+  }
+
+  .strip:empty { display: none; }
+
+  .chip {
+    padding: 7px 13px;
+    background: rgba(29,32,38,0.9);
+    border: 1px solid var(--edge-bright);
+    border-radius: 999px;
+    font-size: 13px;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .chip:active { background: var(--edge); }
+
+  /* ---------- composer ---------- */
+
+  .composer {
+    flex: none;
+    border-top: 1px solid var(--edge);
+    background: var(--panel);
+    padding: 10px 12px calc(10px + var(--bottom));
+  }
+
+  #prompt {
+    width: 100%;
+    min-height: 62px;
+    max-height: 168px;
+    padding: 11px 12px;
+    background: var(--sunk);
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    resize: none;
+    line-height: 1.4;
+  }
+
+  #prompt::placeholder { color: var(--faint); }
+
+  .composer .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 9px;
+  }
+
+  #go {
+    flex: 1;
+    padding: 13px;
+    background: var(--safelight);
+    border: none;
+    border-radius: 8px;
+    color: #1a1204;
+    font-size: 15px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+
+  #go:disabled { background: var(--edge-bright); color: var(--faint); }
+  #go:active:not(:disabled) { background: #e89b12; }
+
+  /* ---------- sheets ---------- */
+
+  .scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(8,9,11,0.66);
+    z-index: 20;
+    display: none;
+  }
+
+  .scrim.open { display: block; }
+
+  .sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 82vh;
+    display: none;
+    flex-direction: column;
+    background: var(--panel);
+    border-top: 1px solid var(--edge-bright);
+    border-radius: 14px 14px 0 0;
+    z-index: 21;
+    padding-bottom: var(--bottom);
+  }
+
+  .sheet.open { display: flex; }
+
+  .grab {
+    flex: none;
+    width: 34px;
+    height: 4px;
+    margin: 9px auto 3px;
+    border-radius: 2px;
+    background: var(--edge-bright);
+  }
+
+  .sheet h2 {
+    flex: none;
+    margin: 0;
+    padding: 6px 16px 12px;
+    font-size: 14px;
+    font-weight: 620;
+    color: var(--muted);
+  }
+
+  .sheet .scroll {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 16px 18px;
+  }
+
+  /* model list */
+
+  .model {
+    display: block;
+    width: 100%;
+    padding: 12px 13px;
+    margin-bottom: 7px;
+    background: var(--sunk);
+    border: 1px solid var(--edge);
+    border-radius: 9px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .model.active { border-color: var(--safelight); }
+  .model .t { font-size: 14.5px; font-weight: 570; }
+  .model.active .t { color: var(--safelight); }
+  .model .d { font-size: 12.5px; color: var(--faint); margin-top: 2px; }
+
+  /* settings */
+
+  .field { margin-bottom: 15px; }
+
+  .field > label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .field .val { color: var(--ink); font-family: var(--mono); font-size: 12px; }
+
+  .field input[type="text"],
+  .field input[type="number"],
+  .field select,
+  .field textarea {
+    width: 100%;
+    padding: 9px 11px;
+    background: var(--sunk);
+    border: 1px solid var(--edge);
+    border-radius: 7px;
+  }
+
+  .field textarea { min-height: 54px; resize: vertical; }
+
+  input[type="range"] {
+    width: 100%;
+    margin: 0;
+    accent-color: var(--safelight);
+    background: transparent;
+  }
+
+  .pair { display: flex; gap: 10px; }
+  .pair > * { flex: 1; min-width: 0; }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
+
+  .preset {
+    padding: 6px 11px;
+    background: var(--sunk);
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    font-size: 12.5px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .preset.active { border-color: var(--safelight); color: var(--safelight); }
+
+  #keyField { font-family: var(--mono); font-size: 12.5px; }
+
+  .aside {
+    font-size: 12px;
+    color: var(--faint);
+    margin: -8px 0 15px;
+    line-height: 1.45;
+  }
+
+  /* history */
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .cell {
+    position: relative;
+    aspect-ratio: 1;
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--sunk);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  /* notice */
+
+  .notice {
+    display: none;
+    padding: 10px 14px;
+    background: #241a19;
+    border-top: 1px solid #3d2725;
+    color: #ffb3aa;
+    font-size: 13px;
+    flex: none;
+  }
+
+  .notice.shown { display: block; }
+
+  .quota {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--faint);
+    padding: 0 16px 14px;
+  }
+
+  @media (min-width: 720px) {
+    body { max-width: 560px; margin: 0 auto; border-left: 1px solid var(--edge); border-right: 1px solid var(--edge); }
+    .sheet { max-width: 560px; margin: 0 auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <button class="pick" id="pickModel">
+    <span class="name" id="modelName">Z-Image Turbo</span>
+    <span class="caret">▼</span>
+  </button>
+  <button class="icon" id="openSettings" aria-label="Settings">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+  </button>
+  <button class="icon" id="openHistory" aria-label="History">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+  </button>
+</div>
+
+<div class="stage" id="stage">
+  <p class="blank" id="blank">Write a prompt and generate. Results are kept on this device.</p>
+  <div class="strip" id="strip"></div>
+</div>
+
+<div class="notice" id="notice"></div>
+
+<div class="composer">
+  <textarea id="prompt" rows="2" placeholder="A rain-slicked street at night, sodium lamps, shallow depth of field"></textarea>
+  <div class="row">
+    <button id="go" disabled>Generate</button>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<!-- model sheet -->
+<div class="sheet" id="modelSheet">
+  <div class="grab"></div>
+  <h2>Model</h2>
+  <div class="scroll" id="modelList"></div>
+</div>
+
+<!-- settings sheet -->
+<div class="sheet" id="settingsSheet">
+  <div class="grab"></div>
+  <h2>Settings</h2>
+  <div class="scroll">
+    <div class="field" id="keyBlock">
+      <label for="keyField">Chutes API key</label>
+      <input id="keyField" type="password" placeholder="cpk_…" autocomplete="off" spellcheck="false">
+    </div>
+    <p class="aside">Stored in this browser only, and sent directly to Chutes. Nothing passes through any other server.</p>
+
+    <div class="field" id="sizeBlock">
+      <label>Size</label>
+      <div class="presets" id="presets"></div>
+      <div class="pair" id="freeSize">
+        <input id="width" type="number" step="64" inputmode="numeric" aria-label="Width">
+        <input id="height" type="number" step="64" inputmode="numeric" aria-label="Height">
+      </div>
+      <select id="sizeEnum" hidden></select>
+      <input id="sizeString" type="text" hidden placeholder="auto, 1280x768, or 16:9">
+    </div>
+
+    <div class="field" id="stepsBlock">
+      <label for="steps">Steps <span class="val" id="stepsVal"></span></label>
+      <input id="steps" type="range">
+    </div>
+
+    <div class="field" id="cfgBlock">
+      <label for="cfg">Guidance <span class="val" id="cfgVal"></span></label>
+      <input id="cfg" type="range">
+    </div>
+
+    <div class="field" id="negBlock">
+      <label for="negative">Negative prompt</label>
+      <textarea id="negative" placeholder="blurry, low quality, extra fingers"></textarea>
+    </div>
+
+    <div class="field">
+      <label for="seed">Seed <span class="val">blank is random</span></label>
+      <input id="seed" type="text" inputmode="numeric" placeholder="random">
+    </div>
+
+    <div class="field">
+      <button class="preset" id="clearHistory">Clear saved images</button>
+    </div>
+  </div>
+  <p class="quota" id="quota"></p>
+</div>
+
+<!-- history sheet -->
+<div class="sheet" id="historySheet">
+  <div class="grab"></div>
+  <h2>Saved</h2>
+  <div class="scroll">
+    <div class="grid" id="grid"></div>
+    <p class="aside" id="gridEmpty" style="margin-top:10px">Nothing saved yet.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var IMG = "https://image.chutes.ai/generate";
+  var el = function (id) { return document.getElementById(id); };
+
+  /* ------------------------------------------------------------------
+     Model registry.
+
+     Every chute defines its own request schema, so each entry carries
+     the parameter names and ranges that model actually accepts. Sending
+     a field a model doesn't know about gets the whole request rejected.
+  ------------------------------------------------------------------ */
+
+  var SDXL = function (id, label, note) {
+    return {
+      id: id, label: label, note: note, url: IMG, model: id,
+      steps: { key: "num_inference_steps", def: 25, min: 1, max: 50 },
+      cfg: { key: "guidance_scale", def: 7.5, min: 1, max: 20, step: 0.5 },
+      size: { mode: "free", min: 128, max: 2048 },
+      negative: true
+    };
+  };
+
+  var MODELS = [
+    {
+      id: "z-image-turbo", label: "Z-Image Turbo",
+      note: "Fastest here — 9 steps. Best default on a phone.",
+      url: "https://chutes-z-image-turbo.chutes.ai/generate",
+      steps: { key: "num_inference_steps", def: 9, min: 1, max: 100 },
+      cfg: { key: "guidance_scale", def: 0, min: 0, max: 5, step: 0.5 },
+      size: { mode: "free", min: 576, max: 2048 },
+      negative: false, promptMax: 1200
+    },
+    {
+      id: "qwen-image", label: "Qwen Image",
+      note: "Strong all-rounder. Handles text in images well.",
+      url: IMG, model: "qwen-image",
+      steps: { key: "num_inference_steps", def: 50, min: 5, max: 100 },
+      cfg: { key: "true_cfg_scale", def: 4, min: 0, max: 10, step: 0.5 },
+      size: { mode: "free", min: 128, max: 2048 },
+      negative: true
+    },
+    {
+      id: "FLUX.1-dev", label: "FLUX.1 dev",
+      note: "Most photoreal. Caps at 30 steps, no negative prompt.",
+      url: IMG, model: "FLUX.1-dev",
+      steps: { key: "num_inference_steps", def: 10, min: 1, max: 30 },
+      cfg: { key: "guidance_scale", def: 7.5, min: 1, max: 20, step: 0.5 },
+      size: { mode: "free", min: 128, max: 2048 },
+      negative: false
+    },
+    {
+      id: "chroma", label: "Chroma",
+      note: "Flux-derived, loose and painterly. No negative prompt.",
+      url: IMG, model: "chroma",
+      steps: { key: "steps", def: 30, min: 5, max: 50 },
+      cfg: { key: "cfg", def: 4.5, min: 1, max: 7.5, step: 0.5 },
+      size: { mode: "free", min: 200, max: 2048 },
+      negative: false
+    },
+    SDXL("JuggernautXL", "JuggernautXL", "Photoreal SDXL workhorse."),
+    SDXL("iLustMix", "iLustMix", "Illustration and semi-real blend."),
+    SDXL("HassakuXL", "HassakuXL", "Anime, high contrast."),
+    SDXL("Illustrij", "Illustrij", "Clean illustration style."),
+    SDXL("Animij", "Animij", "Anime, softer rendering."),
+    SDXL("nova-anime3d-xl", "Nova Anime3D XL", "Anime with 3D-ish shading."),
+    SDXL("nova-cartoon-xl", "Nova Cartoon XL", "Western cartoon styling."),
+    {
+      id: "neta-lumina", label: "Neta Lumina",
+      note: "Anime-tuned Lumina. Minimum 768px, narrow guidance band.",
+      url: IMG, model: "neta-lumina",
+      steps: { key: "steps", def: 30, min: 20, max: 50 },
+      cfg: { key: "cfg", def: 4.5, min: 4, max: 5.5, step: 0.1 },
+      size: { mode: "free", min: 768, max: 2048 },
+      negative: true
+    },
+    {
+      id: "orphic-lora", label: "Orphic LoRA",
+      note: "Stylized LoRA stack. Max 30 steps, no negative prompt.",
+      url: IMG, model: "orphic-lora",
+      steps: { key: "num_inference_steps", def: 10, min: 1, max: 30 },
+      cfg: { key: "guidance_scale", def: 7.5, min: 1, max: 20, step: 0.5 },
+      size: { mode: "free", min: 128, max: 2048 },
+      negative: false
+    },
+    {
+      id: "hidream-i1-full", label: "HiDream I1 Full",
+      note: "Fixed resolutions only. Slow but detailed.",
+      url: "https://chutes-hidream.chutes.ai/generate",
+      steps: { key: "num_inference_steps", def: 50, min: 5, max: 75 },
+      cfg: { key: "guidance_scale", def: 5, min: 0, max: 10, step: 0.5 },
+      size: {
+        mode: "enum", key: "resolution",
+        options: ["1024x1024", "768x1360", "1360x768", "880x1168", "1168x880", "1248x832", "832x1248"]
+      },
+      negative: false
+    },
+    {
+      id: "hunyuan-image-3", label: "Hunyuan Image 3",
+      note: "Takes a size string — auto, 1280x768, or an aspect like 16:9.",
+      url: "https://chutes-hunyuan-image-3.chutes.ai/generate",
+      steps: { key: "steps", def: 50, min: 10, max: 100 },
+      cfg: null,
+      size: { mode: "string", key: "size", def: "auto" },
+      negative: false
+    }
+  ];
+
+  var PRESETS = [
+    { label: "Square", w: 1024, h: 1024 },
+    { label: "Portrait", w: 832, h: 1216 },
+    { label: "Landscape", w: 1216, h: 832 },
+    { label: "Tall", w: 768, h: 1344 }
+  ];
+
+  /* ---------------- state ---------------- */
+
+  var model = MODELS[0];
+  var current = null;   // { url, blob }
+  var busy = false;
+  var settings = {};    // per-model overrides, keyed by model id
+
+  function load(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      return raw === null ? fallback : JSON.parse(raw);
+    } catch (e) { return fallback; }
+  }
+
+  function save(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  }
+
+  settings = load("darkroom-settings", {});
+  var savedModel = load("darkroom-model", null);
+  if (savedModel) {
+    MODELS.forEach(function (m) { if (m.id === savedModel) { model = m; } });
+  }
+
+  function conf() {
+    if (!settings[model.id]) {
+      settings[model.id] = {
+        width: clampSize(1024), height: clampSize(1024),
+        steps: model.steps.def,
+        cfg: model.cfg ? model.cfg.def : null,
+        sizeEnum: model.size.mode === "enum" ? model.size.options[0] : null,
+        sizeString: model.size.mode === "string" ? model.size.def : null
+      };
+    }
+    return settings[model.id];
+  }
+
+  function clampSize(n) {
+    var lo = model.size.min || 128;
+    var hi = model.size.max || 2048;
+    n = Math.round(n / 64) * 64;
+    return Math.max(lo, Math.min(hi, n));
+  }
+
+  /* ---------------- IndexedDB history ---------------- */
+
+  var db = null;
+  var KEEP = 40;
+
+  function openDB() {
+    return new Promise(function (resolve) {
+      var request = indexedDB.open("darkroom", 1);
+      request.onupgradeneeded = function () {
+        var store = request.result.createObjectStore("gens", { keyPath: "ts" });
+        store.createIndex("ts", "ts");
+      };
+      request.onsuccess = function () { db = request.result; resolve(db); };
+      request.onerror = function () { resolve(null); };
+    });
+  }
+
+  function put(record) {
+    if (!db) { return; }
+    try {
+      var tx = db.transaction("gens", "readwrite");
+      tx.objectStore("gens").put(record);
+      tx.oncomplete = trim;
+    } catch (e) {}
+  }
+
+  function trim() {
+    if (!db) { return; }
+    try {
+      var store = db.transaction("gens", "readwrite").objectStore("gens");
+      store.getAllKeys().onsuccess = function (event) {
+        var keys = event.target.result;
+        if (keys.length > KEEP) {
+          keys.slice(0, keys.length - KEEP).forEach(function (key) { store.delete(key); });
+        }
+      };
+    } catch (e) {}
+  }
+
+  function all() {
+    return new Promise(function (resolve) {
+      if (!db) { return resolve([]); }
+      try {
+        var request = db.transaction("gens", "readonly").objectStore("gens").getAll();
+        request.onsuccess = function () { resolve(request.result.reverse()); };
+        request.onerror = function () { resolve([]); };
+      } catch (e) { resolve([]); }
+    });
+  }
+
+  function wipe() {
+    if (!db) { return; }
+    try { db.transaction("gens", "readwrite").objectStore("gens").clear(); } catch (e) {}
+  }
+
+  /* ---------------- sheets ---------------- */
+
+  var sheets = ["modelSheet", "settingsSheet", "historySheet"];
+
+  function closeSheets() {
+    sheets.forEach(function (id) { el(id).classList.remove("open"); });
+    el("scrim").classList.remove("open");
+  }
+
+  function openSheet(id) {
+    closeSheets();
+    el(id).classList.add("open");
+    el("scrim").classList.add("open");
+  }
+
+  el("scrim").addEventListener("click", closeSheets);
+  el("pickModel").addEventListener("click", function () { paintModels(); openSheet("modelSheet"); });
+  el("openSettings").addEventListener("click", function () { paintSettings(); openSheet("settingsSheet"); });
+  el("openHistory").addEventListener("click", function () { paintHistory(); openSheet("historySheet"); });
+
+  /* ---------------- model list ---------------- */
+
+  function paintModels() {
+    var list = el("modelList");
+    list.textContent = "";
+    MODELS.forEach(function (m) {
+      var button = document.createElement("button");
+      button.className = "model" + (m.id === model.id ? " active" : "");
+      var title = document.createElement("div");
+      title.className = "t";
+      title.textContent = m.label;
+      var note = document.createElement("div");
+      note.className = "d";
+      note.textContent = m.note;
+      button.appendChild(title);
+      button.appendChild(note);
+      button.addEventListener("click", function () {
+        model = m;
+        save("darkroom-model", m.id);
+        el("modelName").textContent = m.label;
+        conf();
+        closeSheets();
+      });
+      list.appendChild(button);
+    });
+  }
+
+  /* ---------------- settings ---------------- */
+
+  function paintSettings() {
+    var c = conf();
+
+    // size
+    var mode = model.size.mode;
+    el("freeSize").hidden = mode !== "free";
+    el("presets").hidden = mode !== "free";
+    el("sizeEnum").hidden = mode !== "enum";
+    el("sizeString").hidden = mode !== "string";
+
+    if (mode === "free") {
+      el("width").value = c.width;
+      el("height").value = c.height;
+      el("width").min = model.size.min;
+      el("width").max = model.size.max;
+      el("height").min = model.size.min;
+      el("height").max = model.size.max;
+      paintPresets();
+    } else if (mode === "enum") {
+      var select = el("sizeEnum");
+      select.textContent = "";
+      model.size.options.forEach(function (option) {
+        var node = document.createElement("option");
+        node.value = option;
+        node.textContent = option;
+        select.appendChild(node);
+      });
+      select.value = c.sizeEnum || model.size.options[0];
+    } else {
+      el("sizeString").value = c.sizeString || model.size.def;
+    }
+
+    // steps
+    var steps = el("steps");
+    steps.min = model.steps.min;
+    steps.max = model.steps.max;
+    steps.step = 1;
+    steps.value = Math.max(model.steps.min, Math.min(model.steps.max, c.steps));
+    el("stepsVal").textContent = steps.value + " (default " + model.steps.def + ")";
+
+    // guidance
+    if (model.cfg) {
+      el("cfgBlock").hidden = false;
+      var cfg = el("cfg");
+      cfg.min = model.cfg.min;
+      cfg.max = model.cfg.max;
+      cfg.step = model.cfg.step;
+      cfg.value = c.cfg === null ? model.cfg.def : Math.max(model.cfg.min, Math.min(model.cfg.max, c.cfg));
+      el("cfgVal").textContent = cfg.value + " (default " + model.cfg.def + ")";
+    } else {
+      el("cfgBlock").hidden = true;
+    }
+
+    el("negBlock").hidden = !model.negative;
+  }
+
+  function paintPresets() {
+    var box = el("presets");
+    var c = conf();
+    box.textContent = "";
+    PRESETS.forEach(function (preset) {
+      var w = clampSize(preset.w);
+      var h = clampSize(preset.h);
+      var button = document.createElement("button");
+      button.className = "preset" + (c.width === w && c.height === h ? " active" : "");
+      button.textContent = preset.label;
+      button.addEventListener("click", function () {
+        c.width = w;
+        c.height = h;
+        el("width").value = w;
+        el("height").value = h;
+        save("darkroom-settings", settings);
+        paintPresets();
+      });
+      box.appendChild(button);
+    });
+  }
+
+  el("steps").addEventListener("input", function () {
+    conf().steps = parseInt(this.value, 10);
+    el("stepsVal").textContent = this.value + " (default " + model.steps.def + ")";
+    save("darkroom-settings", settings);
+  });
+
+  el("cfg").addEventListener("input", function () {
+    conf().cfg = parseFloat(this.value);
+    el("cfgVal").textContent = this.value + " (default " + model.cfg.def + ")";
+    save("darkroom-settings", settings);
+  });
+
+  ["width", "height"].forEach(function (id) {
+    el(id).addEventListener("change", function () {
+      var value = clampSize(parseInt(this.value, 10) || 1024);
+      this.value = value;
+      conf()[id] = value;
+      save("darkroom-settings", settings);
+      paintPresets();
+    });
+  });
+
+  el("sizeEnum").addEventListener("change", function () {
+    conf().sizeEnum = this.value;
+    save("darkroom-settings", settings);
+  });
+
+  el("sizeString").addEventListener("change", function () {
+    conf().sizeString = this.value.trim() || "auto";
+    save("darkroom-settings", settings);
+  });
+
+  el("keyField").value = load("chutes_api_key", "");
+  el("keyField").addEventListener("input", function () {
+    save("chutes_api_key", this.value.trim());
+    quota();
+  });
+
+  el("clearHistory").addEventListener("click", function () {
+    wipe();
+    this.textContent = "Cleared";
+    var button = this;
+    setTimeout(function () { button.textContent = "Clear saved images"; }, 1400);
+  });
+
+  /* ---------------- history ---------------- */
+
+  function paintHistory() {
+    all().then(function (records) {
+      var grid = el("grid");
+      grid.textContent = "";
+      el("gridEmpty").hidden = records.length > 0;
+      records.forEach(function (record) {
+        var url = URL.createObjectURL(record.blob);
+        var cell = document.createElement("button");
+        cell.className = "cell";
+        var image = new Image();
+        image.src = url;
+        image.alt = record.prompt.slice(0, 60);
+        cell.appendChild(image);
+        cell.addEventListener("click", function () {
+          show(url, record.blob);
+          el("prompt").value = record.prompt;
+          sync();
+          closeSheets();
+        });
+        grid.appendChild(cell);
+      });
+    });
+  }
+
+  /* ---------------- stage ---------------- */
+
+  function show(url, blob) {
+    current = { url: url, blob: blob };
+    var stage = el("stage");
+    var old = stage.querySelector("img");
+    if (old) { old.remove(); }
+    el("blank").hidden = true;
+
+    var image = new Image();
+    image.src = url;
+    image.alt = "Generated image";
+    stage.insertBefore(image, el("strip"));
+
+    var strip = el("strip");
+    strip.textContent = "";
+    strip.appendChild(chip("Save", download));
+    strip.appendChild(chip("Share", share));
+  }
+
+  function chip(label, handler) {
+    var button = document.createElement("button");
+    button.className = "chip";
+    button.textContent = label;
+    button.addEventListener("click", handler);
+    return button;
+  }
+
+  function download() {
+    if (!current) { return; }
+    var link = document.createElement("a");
+    link.href = current.url;
+    link.download = "darkroom-" + Date.now() + ".jpg";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function share() {
+    if (!current) { return; }
+    var file = new File([current.blob], "darkroom.jpg", { type: current.blob.type || "image/jpeg" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file] }).catch(function () {});
+    } else {
+      download();
+    }
+  }
+
+  function warn(message) {
+    var notice = el("notice");
+    notice.textContent = message;
+    notice.classList.add("shown");
+  }
+
+  function clearNotice() { el("notice").classList.remove("shown"); }
+
+  /* ---------------- quota ---------------- */
+
+  function quota() {
+    var key = load("chutes_api_key", "");
+    if (!key) { el("quota").textContent = ""; return; }
+    fetch("https://api.chutes.ai/users/me/quota_usage/me", {
+      headers: { "Authorization": "Bearer " + key }
+    })
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (data) {
+        if (!data) { el("quota").textContent = ""; return; }
+        var used = data.used !== undefined ? data.used : data.usage;
+        var cap = data.quota !== undefined ? data.quota : data.limit;
+        el("quota").textContent = (used === undefined || cap === undefined)
+          ? "" : "Quota " + used + " / " + cap;
+      })
+      .catch(function () { el("quota").textContent = ""; });
+  }
+
+  /* ---------------- generate ---------------- */
+
+  function payload() {
+    var c = conf();
+    var body = { prompt: el("prompt").value.trim() };
+
+    if (model.model) { body.model = model.model; }
+
+    if (model.size.mode === "free") {
+      body.width = c.width;
+      body.height = c.height;
+    } else if (model.size.mode === "enum") {
+      body[model.size.key] = c.sizeEnum || model.size.options[0];
+    } else {
+      body[model.size.key] = c.sizeString || model.size.def;
+    }
+
+    body[model.steps.key] = c.steps;
+    if (model.cfg) { body[model.cfg.key] = c.cfg === null ? model.cfg.def : c.cfg; }
+
+    if (model.negative) {
+      var negative = el("negative").value.trim();
+      if (negative) { body.negative_prompt = negative; }
+    }
+
+    var seed = el("seed").value.trim();
+    if (seed && /^\d+$/.test(seed)) { body.seed = parseInt(seed, 10); }
+
+    return body;
+  }
+
+  function sync() {
+    el("go").disabled = busy || !el("prompt").value.trim();
+  }
+
+  el("prompt").addEventListener("input", function () {
+    this.style.height = "auto";
+    this.style.height = Math.min(168, this.scrollHeight) + "px";
+    sync();
+  });
+
+  el("go").addEventListener("click", generate);
+
+  function generate() {
+    if (busy) { return; }
+    var text = el("prompt").value.trim();
+    if (!text) { return; }
+
+    var key = load("chutes_api_key", "");
+    if (!key) {
+      warn("Add your Chutes API key in Settings first.");
+      paintSettings();
+      openSheet("settingsSheet");
+      return;
+    }
+
+    if (model.promptMax && text.length > model.promptMax) {
+      warn(model.label + " caps prompts at " + model.promptMax + " characters. Yours is " + text.length + ".");
+      return;
+    }
+
+    clearNotice();
+    busy = true;
+    sync();
+    el("go").textContent = "Generating";
+
+    var veil = document.createElement("div");
+    veil.className = "working";
+    veil.innerHTML = '<div class="orb"></div><div>Generating on ' + model.label + '</div><div class="elapsed">0s</div>';
+    el("stage").appendChild(veil);
+
+    var started = Date.now();
+    var ticker = setInterval(function () {
+      var seconds = Math.round((Date.now() - started) / 1000);
+      var readout = veil.querySelector(".elapsed");
+      if (readout) { readout.textContent = seconds + "s"; }
+    }, 1000);
+
+    fetch(model.url, {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + key,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload())
+    })
+      .then(function (response) {
+        var type = response.headers.get("Content-Type") || "";
+        if (!response.ok || type.indexOf("image/") !== 0) {
+          return response.text().then(function (raw) {
+            throw new Error(explain(response.status, raw));
+          });
+        }
+        return response.blob();
+      })
+      .then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        show(url, blob);
+        put({
+          ts: Date.now(),
+          blob: blob,
+          prompt: text,
+          model: model.id
+        });
+      })
+      .catch(function (error) {
+        warn(error.message || "Generation failed.");
+      })
+      .finally(function () {
+        clearInterval(ticker);
+        veil.remove();
+        busy = false;
+        el("go").textContent = "Generate";
+        sync();
+        quota();
+      });
+  }
+
+  function explain(status, raw) {
+    var detail = "";
+    try {
+      var parsed = JSON.parse(raw);
+      detail = parsed.detail || parsed.error || parsed.message || "";
+      if (typeof detail === "object") { detail = JSON.stringify(detail); }
+    } catch (e) {
+      detail = raw.slice(0, 220);
+    }
+    if (status === 401) { return "Chutes rejected the key (401). Check it in Settings."; }
+    if (status === 402) { return "Account balance is empty (402)."; }
+    if (status === 429) { return "Rate limited or at capacity (429). Wait and retry."; }
+    if (status === 422) { return "The model rejected a parameter (422). " + detail; }
+    if (status === 404) { return "That chute wasn't found (404) — it may have been unpublished."; }
+    return "HTTP " + status + ". " + detail;
+  }
+
+  /* ---------------- boot ---------------- */
+
+  el("modelName").textContent = model.label;
+  conf();
+  openDB().then(quota);
+  sync();
+
+  // Best-effort installability. Chrome may ignore a blob manifest; the page
+  // still works as a home-screen shortcut either way.
+  try {
+    var manifest = {
+      name: "Darkroom", short_name: "Darkroom",
+      display: "standalone", background_color: "#16181c", theme_color: "#16181c",
+      start_url: location.href,
+      icons: [{
+        src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%2316181c'/%3E%3Ccircle cx='256' cy='256' r='104' fill='%23ffb020'/%3E%3C/svg%3E",
+        sizes: "512x512", type: "image/svg+xml", purpose: "any"
+      }]
+    };
+    var link = document.createElement("link");
+    link.rel = "manifest";
+    link.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" }));
+    document.head.appendChild(link);
+  } catch (e) {}
+})();
+</script>
+
+</body>
+</html>
