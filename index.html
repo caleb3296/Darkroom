@@ -466,6 +466,10 @@
       <label for="keyField">Chutes API key</label>
       <input id="keyField" type="password" placeholder="cpk_…" autocomplete="off" spellcheck="false">
     </div>
+    <div class="field" id="orKeyBlock">
+      <label for="orKeyField">OpenRouter API key</label>
+      <input id="orKeyField" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
+    </div>
     <p class="aside">Stored in this browser only, and sent directly to Chutes. Nothing passes through any other server.</p>
 
     <div class="field" id="sizeBlock">
@@ -477,6 +481,10 @@
       </div>
       <select id="sizeEnum" hidden></select>
       <input id="sizeString" type="text" hidden placeholder="auto, 1280x768, or 16:9">
+      <div class="pair" id="tierSize" hidden>
+        <select id="resTier" aria-label="Resolution tier"></select>
+        <select id="aspect" aria-label="Aspect ratio"></select>
+      </div>
     </div>
 
     <div class="field" id="stepsBlock">
@@ -588,8 +596,41 @@
       cfg: { key: "guidance_scale", def: 7.5, min: 1, max: 20, step: 0.5 },
       size: { mode: "free", min: 128, max: 2048 },
       negative: true
+    },
+
+    /* OpenRouter — different API entirely: JSON response carrying base64,
+       resolution tiers instead of pixel dimensions, and no sampler knobs.
+       Always send `resolution`; left unset, Seedream returns 2K and bills
+       the high-resolution rate. */
+    {
+      id: "or-seedream-4.5", label: "Seedream 4.5",
+      note: "$0.04 per image. Sharp, reliable, good with small text.",
+      provider: "openrouter", model: "bytedance-seed/seedream-4.5",
+      steps: null, cfg: null, negative: false,
+      size: { mode: "tier", tiers: ["1K", "2K", "4K"], def: "1K" },
+      cost: "$0.04"
+    },
+    {
+      id: "or-seedream-5-lite", label: "Seedream 5.0 Lite",
+      note: "$0.035 per image. 2K minimum — it won't render smaller.",
+      provider: "openrouter", model: "bytedance-seed/seedream-5.0-lite",
+      steps: null, cfg: null, negative: false,
+      size: { mode: "tier", tiers: ["2K", "4K"], def: "2K" },
+      cost: "$0.035"
+    },
+    {
+      id: "or-seedream-5-pro", label: "Seedream 5.0 Pro",
+      note: "$0.045 at 1K, $0.09 at 2K and up. Watch the tier.",
+      provider: "openrouter", model: "bytedance-seed/seedream-5.0-pro",
+      steps: null, cfg: null, negative: false,
+      size: { mode: "tier", tiers: ["1K", "2K", "4K"], def: "1K" },
+      cost: "$0.045+"
     }
   ];
+
+  var ASPECTS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"];
+
+  function isOR(m) { return m.provider === "openrouter"; }
 
   var PRESETS = [
     { label: "Square", w: 1024, h: 1024 },
@@ -603,6 +644,15 @@
   var model = MODELS[0];
   var current = null;   // { url, blob }
   var busy = false;
+  var lastCost = null;  // USD for the most recent OpenRouter generation
+
+  function toBlob(b64, type) {
+    var binary = atob(b64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
+    return new Blob([bytes], { type: type });
+  }
+
   var settings = {};    // per-model overrides, keyed by model id
 
   function load(key, fallback) {
@@ -626,16 +676,19 @@
     if (!settings[model.id]) {
       settings[model.id] = {
         width: clampSize(1024), height: clampSize(1024),
-        steps: model.steps.def,
+        steps: model.steps ? model.steps.def : null,
         cfg: model.cfg ? model.cfg.def : null,
         sizeEnum: model.size.mode === "enum" ? model.size.options[0] : null,
-        sizeString: model.size.mode === "string" ? model.size.def : null
+        sizeString: model.size.mode === "string" ? model.size.def : null,
+        tier: model.size.mode === "tier" ? model.size.def : null,
+        aspect: model.size.mode === "tier" ? "1:1" : null
       };
     }
     return settings[model.id];
   }
 
   function clampSize(n) {
+    if (model.size.mode !== "free") { return n; }
     var lo = model.size.min || 128;
     var hi = model.size.max || 2048;
     n = Math.round(n / 64) * 64;
@@ -755,6 +808,15 @@
     el("presets").hidden = mode !== "free";
     el("sizeEnum").hidden = mode !== "enum";
     el("sizeString").hidden = mode !== "string";
+    el("tierSize").hidden = mode !== "tier";
+
+    el("keyBlock").hidden = isOR(model);
+    el("orKeyBlock").hidden = !isOR(model);
+
+    if (mode === "tier") {
+      fill(el("resTier"), model.size.tiers, c.tier || model.size.def);
+      fill(el("aspect"), ASPECTS, c.aspect || "1:1");
+    }
 
     if (mode === "free") {
       el("width").value = c.width;
@@ -779,12 +841,17 @@
     }
 
     // steps
-    var steps = el("steps");
-    steps.min = model.steps.min;
-    steps.max = model.steps.max;
-    steps.step = 1;
-    steps.value = Math.max(model.steps.min, Math.min(model.steps.max, c.steps));
-    el("stepsVal").textContent = steps.value + " (default " + model.steps.def + ")";
+    if (model.steps) {
+      el("stepsBlock").hidden = false;
+      var steps = el("steps");
+      steps.min = model.steps.min;
+      steps.max = model.steps.max;
+      steps.step = 1;
+      steps.value = Math.max(model.steps.min, Math.min(model.steps.max, c.steps));
+      el("stepsVal").textContent = steps.value + " (default " + model.steps.def + ")";
+    } else {
+      el("stepsBlock").hidden = true;
+    }
 
     // guidance
     if (model.cfg) {
@@ -844,6 +911,36 @@
       save("darkroom-settings", settings);
       paintPresets();
     });
+  });
+
+  function fill(select, options, chosen) {
+    select.textContent = "";
+    options.forEach(function (option) {
+      var node = document.createElement("option");
+      node.value = option;
+      node.textContent = option;
+      select.appendChild(node);
+    });
+    select.value = options.indexOf(chosen) > -1 ? chosen : options[0];
+  }
+
+  el("resTier").addEventListener("change", function () {
+    conf().tier = this.value;
+    save("darkroom-settings", settings);
+  });
+
+  el("aspect").addEventListener("change", function () {
+    conf().aspect = this.value;
+    save("darkroom-settings", settings);
+  });
+
+  el("orKeyField").value = load("openrouter_api_key", "");
+  el("orKeyField").addEventListener("input", function () {
+    var cleaned = scrub(this.value);
+    if (cleaned !== this.value) { this.value = cleaned; }
+    save("openrouter_api_key", cleaned);
+    var problem = keyProblem(cleaned);
+    if (problem && cleaned) { warn(problem); } else { clearNotice(); }
   });
 
   el("sizeEnum").addEventListener("change", function () {
@@ -921,6 +1018,14 @@
     strip.textContent = "";
     strip.appendChild(chip("Save", download));
     strip.appendChild(chip("Share", share));
+    if (lastCost !== null) {
+      var tag = document.createElement("span");
+      tag.className = "chip";
+      tag.style.borderColor = "var(--edge)";
+      tag.style.color = "var(--muted)";
+      tag.textContent = "$" + lastCost.toFixed(4);
+      strip.appendChild(tag);
+    }
   }
 
   function chip(label, handler) {
@@ -983,6 +1088,7 @@
   /* ---------------- quota ---------------- */
 
   function quota() {
+    if (isOR(model)) { el("quota").textContent = ""; return; }
     var key = scrub(load("chutes_api_key", ""));
     if (!key || keyProblem(key)) { el("quota").textContent = ""; return; }
     fetch("https://api.chutes.ai/users/me/quota_usage/me", {
@@ -1004,6 +1110,16 @@
   function payload() {
     var c = conf();
     var body = { prompt: el("prompt").value.trim() };
+
+    if (isOR(model)) {
+      body.model = model.model;
+      // Always explicit: unset resolution defaults to 2K and bills higher.
+      body.resolution = c.tier || model.size.def;
+      body.aspect_ratio = c.aspect || "1:1";
+      var orSeed = el("seed").value.trim();
+      if (orSeed && /^\d+$/.test(orSeed)) { body.seed = parseInt(orSeed, 10); }
+      return body;
+    }
 
     if (model.model) { body.model = model.model; }
 
@@ -1047,9 +1163,10 @@
     var text = el("prompt").value.trim();
     if (!text) { return; }
 
-    var key = scrub(load("chutes_api_key", ""));
+    var or = isOR(model);
+    var key = scrub(load(or ? "openrouter_api_key" : "chutes_api_key", ""));
     if (!key) {
-      warn("Add your Chutes API key in Settings first.");
+      warn("Add your " + (or ? "OpenRouter" : "Chutes") + " API key in Settings first.");
       paintSettings();
       openSheet("settingsSheet");
       return;
@@ -1069,6 +1186,7 @@
     }
 
     clearNotice();
+    lastCost = null;
     busy = true;
     sync();
     el("go").textContent = "Generating";
@@ -1085,16 +1203,41 @@
       if (readout) { readout.textContent = seconds + "s"; }
     }, 1000);
 
-    fetch(model.url, {
+    var headers = {
+      "Authorization": "Bearer " + key,
+      "Content-Type": "application/json"
+    };
+    if (or) { headers["X-Title"] = "Darkroom"; }
+
+    fetch(or ? "https://openrouter.ai/api/v1/images" : model.url, {
       method: "POST",
-      headers: {
-        "Authorization": "Bearer " + key,
-        "Content-Type": "application/json"
-      },
+      headers: headers,
       body: JSON.stringify(payload())
     })
       .then(function (response) {
         var type = response.headers.get("Content-Type") || "";
+
+        if (or) {
+          // OpenRouter answers with JSON carrying base64, not image bytes.
+          return response.text().then(function (raw) {
+            if (!response.ok) { throw new Error(explain(response.status, raw)); }
+            var parsed;
+            try {
+              parsed = JSON.parse(raw);
+            } catch (e) {
+              throw new Error("OpenRouter returned something that wasn't JSON.");
+            }
+            var item = parsed.data && parsed.data[0];
+            if (!item || !item.b64_json) {
+              throw new Error(explain(response.status, raw));
+            }
+            if (parsed.usage && typeof parsed.usage.cost === "number") {
+              lastCost = parsed.usage.cost;
+            }
+            return toBlob(item.b64_json, item.media_type || "image/png");
+          });
+        }
+
         if (!response.ok || type.indexOf("image/") !== 0) {
           return response.text().then(function (raw) {
             throw new Error(explain(response.status, raw));
